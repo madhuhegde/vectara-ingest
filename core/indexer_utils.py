@@ -226,13 +226,22 @@ def prepare_file_metadata(metadata: Dict[str, Any], filename: str, static_metada
     """Prepare file metadata by adding filename and static metadata"""
     if static_metadata:
         metadata.update({k: v for k, v in static_metadata.items() if k not in metadata})
-    
+
     metadata['file_name'] = os.path.basename(filename)
-    
+
+    # Derive chunk_index from filename for split PDFs (e.g. doc_chunk_1.pdf -> chunk_index: 1)
+    if 'chunk_index' not in metadata:
+        match = re.search(r"_chunk_(\d+)(?:\.[^.]+)?$", os.path.basename(filename), re.IGNORECASE)
+        if match:
+            try:
+                metadata['chunk_index'] = int(match.group(1))
+            except ValueError:
+                pass
+
     # URL-decode any URL fields in metadata to prevent double-encoding issues
     if 'url' in metadata:
         metadata['url'] = normalize_url_for_metadata(metadata['url'])
-    
+
     return metadata
 
 

@@ -898,27 +898,28 @@ class Indexer:
                         })
                         
                         # Update document part to reference the image
-                        part = {"text": text, "image_id": image_id, "metadata": metadata}
-                        if i < len(document.get("document_parts", [])) and document["document_parts"][i].get("custom_dims"):
-                            part["custom_dims"] = document["document_parts"][i]["custom_dims"]
-                        updated_document_parts.append(part)
-
+                        updated_document_parts.append({
+                            "text": text,
+                            "image_id": image_id,
+                            "metadata": metadata
+                        })
+                        
                         if self.verbose:
                             logger.info(f"Added binary data for image {image_id} with MIME type {mime_type}")
                     else:
                         # No binary data found, add as regular text
-                        part = {"text": text, "metadata": metadata}
-                        if i < len(document.get("document_parts", [])) and document["document_parts"][i].get("custom_dims"):
-                            part["custom_dims"] = document["document_parts"][i]["custom_dims"]
-                        updated_document_parts.append(part)
+                        updated_document_parts.append({
+                            "text": text,
+                            "metadata": metadata
+                        })
                         if self.verbose:
                             logger.warning(f"Binary data not found for image {image_id}")
                 else:
                     # Regular text element
-                    part = {"text": text, "metadata": metadata}
-                    if i < len(document.get("document_parts", [])) and document["document_parts"][i].get("custom_dims"):
-                        part["custom_dims"] = document["document_parts"][i]["custom_dims"]
-                    updated_document_parts.append(part)
+                    updated_document_parts.append({
+                        "text": text,
+                        "metadata": metadata
+                    })
             
             # Update document structure if we found any images with binary data
             if images_array:

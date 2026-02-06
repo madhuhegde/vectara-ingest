@@ -8,9 +8,10 @@ logger = logging.getLogger(__name__)
 
 class DocumentBuilder:
     """Handles document structure creation for Vectara indexing"""
-    
+
     def __init__(self, cfg, normalize_text_func=None):
         self.cfg = cfg
+        self.custom_dimension_names = list(cfg.vectara.get("custom_dimensions", []) or [])
         if normalize_text_func:
             self.normalize_text = normalize_text_func
         else:
@@ -67,9 +68,13 @@ class DocumentBuilder:
         tables_array = self._build_tables_array(tables) if tables else []
         
         if use_core_indexing:
-            document = self._build_core_document(document, texts, metadatas, doc_title, tables_array)
+            document = self._build_core_document(
+                document, texts, metadatas, doc_metadata, doc_title, tables_array
+            )
         else:
-            document = self._build_structured_document(document, texts, titles, metadatas, doc_title, tables_array)
+            document = self._build_structured_document(
+                document, texts, titles, metadatas, doc_metadata, doc_title, tables_array
+            )
         
         if doc_metadata:
             document["metadata"].update(doc_metadata)
@@ -118,11 +123,23 @@ class DocumentBuilder:
             
         return tables_array
     
+    def _custom_dims_from_metadata(self, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Build custom_dims array for Vectara from metadata keys listed in config."""
+        if not self.custom_dimension_names or not metadata:
+            return []
+        dims = []
+        for name in self.custom_dimension_names:
+            val = metadata.get(name)
+            if val is not None and isinstance(val, (int, float)):
+                dims.append({"name": name, "value": float(val)})
+        return dims
+
     def _build_core_document(
         self,
         document: Dict[str, Any],
         texts: List[str],
         metadatas: List[Dict[str, Any]],
+        doc_metadata: Dict[str, Any],
         doc_title: str,
         tables_array: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
@@ -131,15 +148,19 @@ class DocumentBuilder:
         if any(len(text) > 16384 for text in texts):
             logger.warning(f"Document {document['id']} has segments too large for core indexing")
             return None
-            
-        document["document_parts"] = [
-            {"text": self.normalize_text(text), "metadata": md}
-            for text, md in zip(texts, metadatas)
-        ]
-        
+
+        document["document_parts"] = []
+        for text, md in zip(texts, metadatas):
+            part = {"text": self.normalize_text(text), "metadata": md}
+            merged = {**(doc_metadata or {}), **md}
+            custom_dims = self._custom_dims_from_metadata(merged)
+            if custom_dims:
+                part["custom_dims"] = custom_dims
+            document["document_parts"].append(part)
+
         if tables_array:
             document["tables"] = tables_array
-            
+
         if doc_title:
             document["metadata"] = {"title": doc_title}
 
@@ -151,22 +172,27 @@ class DocumentBuilder:
         texts: List[str],
         titles: List[str],
         metadatas: List[Dict[str, Any]],
+        doc_metadata: Dict[str, Any],
         doc_title: str,
         tables_array: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Build document for structured indexing"""
         if doc_title and len(doc_title) > 0:
             document["title"] = self.normalize_text(doc_title)
-            
-        document["sections"] = [
-            {
+
+        document["sections"] = []
+        for text, title, md in zip(texts, titles, metadatas):
+            section = {
                 "text": self.normalize_text(text),
                 "title": self.normalize_text(title),
                 "metadata": md
             }
-            for text, title, md in zip(texts, titles, metadatas)
-        ]
-        
+            merged = {**(doc_metadata or {}), **md}
+            custom_dims = self._custom_dims_from_metadata(merged)
+            if custom_dims:
+                section["custom_dims"] = custom_dims
+            document["sections"].append(section)
+
         if tables_array:
             document["sections"].append({
                 "text": '',
@@ -174,7 +200,7 @@ class DocumentBuilder:
                 "metadata": {},
                 "tables": tables_array
             })
-            
+
         return document
     
     def create_image_document(
